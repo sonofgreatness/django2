@@ -39,8 +39,8 @@ load_dotenv(ENV_FILE)
 # Application definition
 
 INSTALLED_APPS = [
-        'whitenoise.runserver_nostatic'
-     'corsheaders', 
+    'whitenoise.runserver_nostatic',
+    'corsheaders', 
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -53,7 +53,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middelware.WhiteNoiseMiddleWare'
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',  # Should be right after SecurityMiddleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
