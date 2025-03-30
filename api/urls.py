@@ -4,7 +4,8 @@ from .views import(add_entity, get_entity, register_user,login_user,
     get_recent_trip, list_log_details_for_trip,
     get_trip_detail, create_trip_detail, update_or_delete_trip_detail,
     get_log_detail, create_log_detail, update_or_delete_log_detail
- ,get_trip
+ ,get_trip, log_book_detail_view, log_book_view,create_activity_log,
+ delete_activity_log,create_many_activity_logs  
  )
 
 urlpatterns = [
@@ -19,7 +20,7 @@ urlpatterns = [
     # TripDetail Endpoints
     path('trips/<int:trip_id>/detail/', get_trip_detail, name='get_trip_detail'),
     path('trips/<int:trip_id>/detail/create/', create_trip_detail, name='create_trip_detail'),
-    path('trips/<int:trip_id>/detail/update/', update_or_delete_trip_detail, name='update_trip_detail'),
+    path('trips/detail/update/<int:trip_id>/', update_or_delete_trip_detail, name='update_trip_detail'),
     
     # LogDetail Endpoints
     path('trips/<int:trip_id>/logs/', list_log_details_for_trip, name='list_log_details'),
@@ -27,10 +28,19 @@ urlpatterns = [
     path('trips/<int:trip_id>/log/create/', create_log_detail, name='create_log_detail'),
     path('trips/<int:trip_id>/log/update/', update_or_delete_log_detail, name='update_log_detail'),
 
+    #LogBook Endpoints 
+    path('log-books/<int:log_detail_id>/', log_book_view, name='log_book'),
+    path('log-books/<int:log_detail_id>/detail/', log_book_detail_view, name='log_book_detail'),
+    
+
+    # Activity Log Endpoints
+    path('log-books/<int:log_book_id>/activity-logs/', create_activity_log, name='create_activity_log'),
+    path('log-books/<int:log_book_id>/activity-logs/<int:activity_log_id>/', delete_activity_log, name='delete_activity_log'), # Added comma here
+    path('log-books/<int:log_book_id>/activity-logs/many/', create_many_activity_logs, name='create_many_activity_logs'),
+
     #User Auth endpoints 
     path('add-entity/', add_entity, name='add_entity'),
     path('get-entity/', get_entity, name='get_entity'),
     path('register/', register_user, name='register_user'),
     path('login/', login_user, name='login_user'),
 ]
-

@@ -5,11 +5,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
-from .models import Entity, Trip, TripDetail, LogDetail
+from .models import Entity, Trip, TripDetail, LogDetail,LogBook,ActivityLog
 from .serializers import EntitySerializer
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
-from .serializers import UserRegistrationSerializer,TripSerializer, TripDetailSerializer, LogDetailSerializer
+from .serializers import UserRegistrationSerializer,TripSerializer, TripDetailSerializer, LogDetailSerializer, LogBookSerializer, ActivityLogSerializer
 from rest_framework.authtoken.models import Token
 from  rest_framework.authentication import TokenAuthentication 
 
@@ -155,50 +155,98 @@ def get_trip_detail(request, trip_id):
         return Response({"error": "Trip detail not found"}, status=404)
 
     serializer = TripDetailSerializer(trip_detail)
+    logger.info(f"get trip detail {serializer.data}")
     return Response(serializer.data)
 
 
-@api_view(['POST'])
-@authentication_classes([TokenAuthentication])
+def parse_location_string(location_str):
+    """Convert 'lat,lng' string to a dictionary {latitude: lat, longitude: lng}."""
+    try:
+        lat, lng = map(float, location_str.split(","))
+        return {"latitude": lat, "longitude": lng}
+    except ValueError:
+        logger.error(f"Invalid location format: {location_str}")
+        return None
+
+@api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def create_trip_detail(request, trip_id):
-    """ Create TripDetail for a trip (user must own the trip) """
+    """Create a TripDetail for a trip (user must own the trip)"""
+    
+
+    # Fetch trip and check if user owns it
     trip = get_object_or_404(Trip, id=trip_id, users=request.user)
     
-    # Ensure there's only one TripDetail per Trip
+
+    # Check if a TripDetail already exists for this trip
     if TripDetail.objects.filter(trip=trip).exists():
+        logger.warning(f"TripDetail already exists for trip {trip_id}")
         return Response({"error": "TripDetail already exists for this trip"}, status=400)
 
+    # Convert location strings to dictionaries
     data = request.data.copy()
-    data["trip"] = trip.id  # Ensure trip ID is linked
+    data["trip"] = trip.id
 
+    for field in ["pickup_location", "dropoff_location", "current_location"]:
+        if field in data and isinstance(data[field], str):
+            parsed_location = parse_location_string(data[field])
+            if parsed_location:
+                data[field] = parsed_location
+            else:
+                return Response({field: "Invalid location format. Expected 'lat,lng'."}, status=400)
+
+    # Validate and create the TripDetail
     serializer = TripDetailSerializer(data=data)
     if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=201)
-
-    return Response(serializer.errors, status=400)
+        try:
+            trip_detail = serializer.save()
+            logger.info(f"TripDetail created successfully: {trip_detail}")
+            return Response(serializer.data, status=201)
+        except Exception as e:
+            logger.error(f"Error saving TripDetail: {e}", exc_info=True)
+            return Response({"error": f"Error saving TripDetail: {str(e)}"}, status=500)
+    else:
+        logger.warning(f"Validation failed with errors: {serializer.errors}")
+        return Response(serializer.errors, status=400)
 
 @api_view(['PUT', 'DELETE'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
 def update_or_delete_trip_detail(request, trip_id):
+    logger.info(f"UPDATE {trip_id}")
+    logger.info(f"UPDATE {trip_id}")
     """ Update or delete TripDetail (only if the user owns the trip) """
     trip = get_object_or_404(Trip, id=trip_id, users=request.user)
+    logger.info(f"trip found {trip_id}")
     trip_detail = get_object_or_404(TripDetail, trip=trip)
+    logger.info(f"trip_detail found {trip_id}")
 
     if request.method == 'PUT':
-        serializer = TripDetailSerializer(trip_detail, data=request.data, partial=True)
+        # Copy request data and set trip ID
+        data = request.data.copy()
+        data["trip"] = trip.id
+
+        # Parse location strings
+        for field in ["pickup_location", "dropoff_location", "current_location"]:
+            if field in data and isinstance(data[field], str):
+                parsed_location = parse_location_string(data[field])
+                if parsed_location:
+                    data[field] = parsed_location
+                else:
+                    return Response({field: "Invalid location format. Expected 'lat,lng'."}, status=400)
+
+        # Validate and update the TripDetail
+        logger.info(f"UPDATE DATA {data}")
+        serializer = TripDetailSerializer(trip_detail, data=data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=400)
 
     elif request.method == 'DELETE':
+        logger.info("aboute to delete")
         trip_detail.delete()
         return Response({"message": "TripDetail deleted successfully"})
-
-
 ### -------------------- LOG DETAIL CRUD -------------------- ###
 
 @api_view(['GET'])
@@ -220,21 +268,22 @@ def get_log_detail(request, trip_id):
 @permission_classes([IsAuthenticated])
 def create_log_detail(request, trip_id):
     """ Create LogDetail for a trip (user must own the trip) """
-    trip = get_object_or_404(Trip, id=trip_id, users=request.user)
-    
-    # Ensure there's only one LogDetail per Trip
-    if LogDetail.objects.filter(trip=trip).exists():
-        return Response({"error": "LogDetail already exists for this trip"}, status=400)
-
-    data = request.data.copy()
-    data["trip"] = trip.id  # Ensure trip ID is linked
-
-    serializer = LogDetailSerializer(data=data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=201)
-
-    return Response(serializer.errors, status=400)
+    logger.info(f"Attempting to create LogDetail for trip ID: {trip_id}, User: {request.user}")
+    try:
+        trip = get_object_or_404(Trip, id=trip_id, users=request.user)
+        data = request.data.copy()
+        data["trip"] = trip.id  # Ensure trip ID is linked
+        
+        serializer = LogDetailSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        else:
+            return Response(serializer.errors, status=400)
+    except Trip.DoesNotExist:
+        return Response({"error": "Trip not found or permission denied."}, status=404)
+    except Exception as e:
+        return Response({"error": "An unexpected error occurred."}, status=500)
 
 @api_view(['PUT', 'DELETE'])
 @authentication_classes([TokenAuthentication])
@@ -300,6 +349,112 @@ def register_user(request):
     user.save()
 
     return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
+
+
+
+@api_view(['GET', 'POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def log_book_view(request, log_detail_id):
+    """Handles GET and POST requests for LogBook."""
+    if request.method == 'GET':
+        log_book = get_object_or_404(LogBook, log_detail_id=log_detail_id)
+        serializer = LogBookSerializer(log_book)
+        return Response(serializer.data)
+
+    elif request.method == 'POST':
+        data = request.data.copy()
+        data['log_detail'] = log_detail_id
+        serializer = LogBookSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['PUT', 'DELETE'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def log_book_detail_view(request, log_detail_id):
+    """Handles PUT and DELETE requests for LogBook."""
+    log_book = get_object_or_404(LogBook, log_detail_id=log_detail_id)
+
+    if request.method == 'PUT':
+        serializer = LogBookSerializer(log_book, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    elif request.method == 'DELETE':
+        log_book.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def create_activity_log(request, log_book_id):
+    logger.info(f"log_book_id (log_detail_id) received: {log_book_id}")
+    logger.info(f"Request data: {request.data}")
+    """
+    Creates a new ActivityLog entry for a given LogBook.
+    """
+    try:
+        log_detail = get_object_or_404(LogDetail, pk=log_book_id)
+        log_book = log_detail.log_book
+    except LogDetail.DoesNotExist:
+        return Response({"error": "LogDetail not found."}, status=status.HTTP_404_NOT_FOUND)
+    serializer = ActivityLogSerializer(data=request.data, context={'log_book': log_book}) #add context
+
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    else:
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['DELETE'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def delete_activity_log(request, log_book_id, activity_log_id):
+    """
+    Deletes an ActivityLog entry.
+    """
+    try:
+        activity_log = get_object_or_404(ActivityLog, log_book_id=log_book_id, pk=activity_log_id)
+    except ActivityLog.DoesNotExist:
+        return Response({"error": "ActivityLog not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    activity_log.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+# Example to create many ActivityLog at once.
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def create_many_activity_logs(request, log_book_id):
+    """
+    Creates multiple ActivityLog entries for a given LogBook.
+    """
+    try:
+        log_book = get_object_or_404(LogBook, pk=log_book_id)
+    except LogBook.DoesNotExist:
+        return Response({"error": "LogBook not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = ActivityLogSerializer(data=request.data, many=True) # many = True important here
+    if serializer.is_valid():
+        serializer.save(log_book=log_book)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+
+
+
+
+
 
 @api_view(['POST'])
 def login_user(request):
