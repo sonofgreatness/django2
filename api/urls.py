@@ -5,7 +5,7 @@ from .views import(add_entity, get_entity, register_user,login_user,
     get_trip_detail, create_trip_detail, update_or_delete_trip_detail,
     get_log_detail, create_log_detail, update_or_delete_log_detail
  ,get_trip, log_book_detail_view, log_book_view,create_activity_log,
- delete_activity_log,create_many_activity_logs  
+ delete_activity_log, log_summary 
  )
 
 urlpatterns = [
@@ -36,8 +36,7 @@ urlpatterns = [
     # Activity Log Endpoints
     path('log-books/<int:log_book_id>/activity-logs/', create_activity_log, name='create_activity_log'),
     path('log-books/<int:log_book_id>/activity-logs/<int:activity_log_id>/', delete_activity_log, name='delete_activity_log'), # Added comma here
-    path('log-books/<int:log_book_id>/activity-logs/many/', create_many_activity_logs, name='create_many_activity_logs'),
-
+    path('log-summary/<int:log_detail_id>/',log_summary, name ='log_summary'),
     #User Auth endpoints 
     path('add-entity/', add_entity, name='add_entity'),
     path('get-entity/', get_entity, name='get_entity'),

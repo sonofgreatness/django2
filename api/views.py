@@ -12,7 +12,7 @@ from django.shortcuts import get_object_or_404
 from .serializers import UserRegistrationSerializer,TripSerializer, TripDetailSerializer, LogDetailSerializer, LogBookSerializer, ActivityLogSerializer
 from rest_framework.authtoken.models import Token
 from  rest_framework.authentication import TokenAuthentication 
-
+from django.db.models import Count
 
 logger = logging.getLogger(__name__)
 
@@ -405,6 +405,7 @@ def create_activity_log(request, log_book_id):
         log_book = log_detail.log_book
     except LogDetail.DoesNotExist:
         return Response({"error": "LogDetail not found."}, status=status.HTTP_404_NOT_FOUND)
+
     serializer = ActivityLogSerializer(data=request.data, context={'log_book': log_book}) #add context
 
     if serializer.is_valid():
@@ -428,27 +429,28 @@ def delete_activity_log(request, log_book_id, activity_log_id):
     activity_log.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
-# Example to create many ActivityLog at once.
-@api_view(['POST'])
+
+
+@api_view(['GET'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
-def create_many_activity_logs(request, log_book_id):
-    """
-    Creates multiple ActivityLog entries for a given LogBook.
-    """
+def log_summary(request, log_detail_id):
+    logger.info(f"log_summary called with request {request}")
     try:
-        log_book = get_object_or_404(LogBook, pk=log_book_id)
-    except LogBook.DoesNotExist:
-        return Response({"error": "LogBook not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    serializer = ActivityLogSerializer(data=request.data, many=True) # many = True important here
-    if serializer.is_valid():
-        serializer.save(log_book=log_book)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        log_detail = get_object_or_404(LogDetail, pk=log_detail_id)
+        log_book = log_detail.log_book
+    except LogDetail.DoesNotExist:
+        return Response({"error": "LogDetail not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
 
+    activity_counts = ActivityLog.objects.filter(log_book=log_book).values('activity').annotate(count=Count('id'))
+    activity_summary = { "ONDUTY": 0,"OFFDUTY": 0,"SLEEPERBERTH": 0, "DRIVING": 0,}
+
+    for item in activity_counts:
+        activity_summary[item['activity']] = item['count']
+
+    return Response({"start_date": log_detail.start_date,"sums": activity_summary})
 
 
 
