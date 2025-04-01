@@ -414,6 +414,25 @@ def create_activity_log(request, log_book_id):
     else:
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_activity_log(request, log_book_id):
+    """
+    Fetches all ActivityLog entries for a given LogBook.
+    """
+        
+    try:
+        log_detail = get_object_or_404(LogDetail, pk=log_book_id)
+        log_book = log_detail.log_book
+    except LogDetail.DoesNotExist:
+        return Response({"error": " fcf LogDetail not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    activity_logs = ActivityLog.objects.filter(log_book=log_book)
+    serializer = ActivityLogSerializer(activity_logs, many=True)
+
+    return Response(serializer.data, status=status.HTTP_200_OK)        
+
 @api_view(['DELETE'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([IsAuthenticated])
